@@ -8,7 +8,7 @@ import FilterRow from '@/components/FilterRow';
 import ConceptCard from '@/components/ConceptCard';
 import ConceptModal from '@/components/ConceptModal';
 import FooterUtility from '@/components/FooterUtility';
-import { loadConcepts, filterAndSearch, byNumber, compareForGrid } from '@/lib/concepts';
+import { loadConcepts, loadPlacementCounts, filterAndSearch, byNumber, compareForGrid } from '@/lib/concepts';
 import { supabase } from '@/lib/supabase';
 
 export default function Page() {
@@ -26,6 +26,7 @@ function Vault() {
 
   const [concepts, setConcepts] = useState([]);
   const [deployCounts, setDeployCounts] = useState({});
+  const [placementCounts, setPlacementCounts] = useState({});
   const [filters, setFilters] = useState({ pillar: 'all', status: 'all', tier: 'all' });
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -38,8 +39,9 @@ function Vault() {
   async function refresh() {
     setLoading(true);
     try {
-      const data = await loadConcepts();
+      const [data, places] = await Promise.all([loadConcepts(), loadPlacementCounts()]);
       setConcepts(data);
+      setPlacementCounts(places);
       await refreshDeployCounts();
     } catch (e) {
       setError(e.message || String(e));
@@ -146,6 +148,7 @@ function Vault() {
         open={modalOpen}
         concept={editingConcept}
         byId={editingByNumber}
+        placementCount={editingConcept ? (placementCounts[editingConcept.id] || 0) : 0}
         onClose={closeModal}
         onSaved={onSaved}
         onDeleted={onDeleted}

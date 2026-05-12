@@ -28,7 +28,7 @@ const EMPTY_DRAFT = {
   asset_links: '',
 };
 
-export default function ConceptModal({ open, concept, byId, onClose, onSaved, onDeleted }) {
+export default function ConceptModal({ open, concept, byId, placementCount = 0, onClose, onSaved, onDeleted }) {
   const isNew = !concept;
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [deployments, setDeployments] = useState([]);
@@ -263,6 +263,19 @@ export default function ConceptModal({ open, concept, byId, onClose, onSaved, on
 
         {error && (
           <div className="mt-6 text-rust text-sm border border-rust/30 px-3 py-2">{error}</div>
+        )}
+
+        {!isNew && placementCount > 0 && (
+          <div className="mt-6 pt-5 border-t border-subtle">
+            <a
+              href={`https://calendar.dogppl.co/?concept=${encodeURIComponent(concept.id)}`}
+              target="_blank"
+              rel="noopener"
+              className="font-mono text-[11px] uppercase tracking-[0.18em] text-mud hover:text-bone transition-colors"
+            >
+              Open in Calendar → {placementCount} placement{placementCount === 1 ? '' : 's'}
+            </a>
+          </div>
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-3 mt-8 pt-6 border-t border-subtle">

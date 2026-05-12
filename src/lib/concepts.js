@@ -56,6 +56,26 @@ export async function loadConcepts() {
   return (data || []).sort(compareForGrid);
 }
 
+// Read calendar_state.placements (a single id=1 row keyed by day-id ->
+// array of concept ids) and return a flat map of conceptId -> count.
+// Used to decide whether to surface the "Open in Calendar" cross-link
+// inside a concept's modal.
+export async function loadPlacementCounts() {
+  if (!supabase) return {};
+  const { data, error } = await supabase
+    .from('calendar_state')
+    .select('placements')
+    .eq('id', 1)
+    .maybeSingle();
+  if (error || !data?.placements) return {};
+  const counts = {};
+  for (const ids of Object.values(data.placements)) {
+    if (!Array.isArray(ids)) continue;
+    for (const cid of ids) counts[cid] = (counts[cid] || 0) + 1;
+  }
+  return counts;
+}
+
 export function compareForGrid(a, b) {
   const ar = STATUS_RANK[a.status] ?? 99;
   const br = STATUS_RANK[b.status] ?? 99;
