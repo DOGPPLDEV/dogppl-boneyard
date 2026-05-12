@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Placeholder color tokens — replaced with the mockup's exact values
+   once the HTML reference lands. */
+:root {
+  --bone:  #F3F1EE;
+  --paw:   #181818;
+  --grass: #565F4E;
+  --mud:   #A47E5C;
+  --sand:  #BFB3A5;
+  --rust:  #9A4536;
+  --sage:  #8C8A7E;
+}
+
+html, body {
+  background: var(--paw);
+  color: var(--bone);
+}
