@@ -2,19 +2,49 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Placeholder color tokens — replaced with the mockup's exact values
-   once the HTML reference lands. */
+/* Color tokens — sourced from the HTML mockup */
 :root {
-  --bone:  #F3F1EE;
-  --paw:   #181818;
-  --grass: #565F4E;
-  --mud:   #A47E5C;
-  --sand:  #BFB3A5;
-  --rust:  #9A4536;
-  --sage:  #8C8A7E;
+  --bone:          #F3F1EE;
+  --bone-dim:      #C9C5BE;
+  --paw:           #181818;
+  --paw-deep:      #0E0E0E;
+  --paw-card:      #1F1F1E;
+  --paw-elev:      #262624;
+  --grass:         #565F4E;
+  --grass-bright: #7A8870;
+  --mud:           #A47E5C;
+  --sand:          #BFB3A5;
+  --dry-sage:      #8A9080;
+  --rust:          #B5532A;
+  --border:         rgba(243, 241, 238, 0.08);
+  --border-strong:  rgba(243, 241, 238, 0.18);
 }
 
 html, body {
   background: var(--paw);
   color: var(--bone);
+  font-family: var(--font-body, 'Inter Tight', -apple-system, sans-serif);
+  font-size: 15px;
+  line-height: 1.5;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background-image:
+    radial-gradient(ellipse at top,          rgba(86, 95, 78, 0.08),  transparent 60%),
+    radial-gradient(ellipse at bottom right, rgba(164, 126, 92, 0.04), transparent 60%);
+  background-attachment: fixed;
+}
+
+/* Display / italic Boneyard "B" word in the header */
+.display       { font-family: var(--font-display, 'Fraunces', Georgia, serif); }
+.mono          { font-family: var(--font-mono, 'JetBrains Mono', monospace); }
+.opsz-144      { font-variation-settings: "opsz" 144; }
+.opsz-72       { font-variation-settings: "opsz" 72; }
+.opsz-48       { font-variation-settings: "opsz" 48; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
