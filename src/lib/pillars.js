@@ -2,10 +2,16 @@
 //   DOG, Culture, Bond, Edu, Brand   ← the five "core" pillars
 //   Timely, Paid, Events, Alerts, Partners   ← calendar-only categories
 //
-// The Boneyard UI surfaces the five core pillars as nice display names
-// and files everything else under a single "Other" filter, so calendar-
-// authored concepts (events, paid, etc.) still appear in the vault but
-// don't clutter the pillar balance.
+// The Boneyard UI surfaces 8 multi-select pillar chips. The five core
+// pillars stay 1:1 with the DB. The remaining three chips fold the
+// "calendar-only" values into the closest semantic home:
+//   Timely        → Timely + Alerts (alerts are time-sensitive notices)
+//   Events        → Events
+//   Partnerships  → Partners (DB value stays "Partners")
+//   (Paid folds into Brand — paid creative is brand work cut for spend)
+//
+// Pillar balance bars at the top stay tied to the 5 canonical pillars
+// only; the filter chips are display-only.
 
 export const CORE_PILLARS = ['DOG', 'Culture', 'Bond', 'Edu', 'Brand'];
 export const OTHER_PILLARS = ['Timely', 'Paid', 'Events', 'Alerts', 'Partners'];
@@ -25,9 +31,24 @@ const DISPLAY = {
 // Display label -> DB value (inverse of DISPLAY, used when saving)
 const RAW = Object.fromEntries(Object.entries(DISPLAY).map(([raw, label]) => [label, raw]));
 
+// Multi-select filter chips. Each chip maps to one or more DB pillar
+// values (OR logic). Order is the rendering order in the filter row.
+export const PILLAR_CHIPS = [
+  { id: 'Dog',          label: 'Dog',          raws: ['DOG'] },
+  { id: 'Culture',      label: 'Culture',      raws: ['Culture'] },
+  { id: 'Bond',         label: 'Bond',         raws: ['Bond'] },
+  { id: 'Education',    label: 'Education',    raws: ['Edu'] },
+  { id: 'Brand',        label: 'Brand',        raws: ['Brand', 'Paid'] },
+  { id: 'Timely',       label: 'Timely',       raws: ['Timely', 'Alerts'] },
+  { id: 'Events',       label: 'Events',       raws: ['Events'] },
+  { id: 'Partnerships', label: 'Partnerships', raws: ['Partners'] },
+];
+
+const CHIP_BY_ID = Object.fromEntries(PILLAR_CHIPS.map(c => [c.id, c]));
+
 export function pillarLabel(rawPillar) {
   if (!rawPillar) return 'Other';
-  return DISPLAY[rawPillar] || 'Other';
+  return DISPLAY[rawPillar] || rawPillar;
 }
 
 export function pillarRaw(displayLabel) {
@@ -38,12 +59,15 @@ export function isCorePillar(rawPillar) {
   return CORE_PILLARS.includes(rawPillar);
 }
 
-// Returns true if a concept matches a UI filter chip value.
-// Filter values are display labels ("Dog", "Culture", ..., "Other", "all").
-export function matchesPillarFilter(rawPillar, filterValue) {
-  if (filterValue === 'all') return true;
-  if (filterValue === 'Other') return !isCorePillar(rawPillar);
-  return pillarLabel(rawPillar) === filterValue;
+// Returns true if a concept's raw pillar matches the multi-select chip
+// selection. An empty selection ([] or null) matches everything.
+export function matchesPillarFilters(rawPillar, selectedChipIds) {
+  if (!Array.isArray(selectedChipIds) || selectedChipIds.length === 0) return true;
+  for (const id of selectedChipIds) {
+    const chip = CHIP_BY_ID[id];
+    if (chip && chip.raws.includes(rawPillar)) return true;
+  }
+  return false;
 }
 
 // Pillar tag color, matching the mockup's .tag.pillar-* rules.

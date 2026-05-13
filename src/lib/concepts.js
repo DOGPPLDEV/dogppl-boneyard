@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { isCorePillar, PILLAR_TARGETS, CORE_PILLARS, matchesPillarFilter } from './pillars';
+import { isCorePillar, PILLAR_TARGETS, CORE_PILLARS, matchesPillarFilters } from './pillars';
 
 // Spec sort: status priority, then updatedAt desc.
 const STATUS_RANK = { approved: 0, production: 1, sketch: 2, deployed: 3, buried: 4 };
@@ -57,22 +57,42 @@ export async function loadConcepts() {
 }
 
 // Read calendar_state.placements (a single id=1 row keyed by day-id ->
-// array of concept ids) and return a flat map of conceptId -> count.
-// Used to decide whether to surface the "Open in Calendar" cross-link
-// inside a concept's modal.
-export async function loadPlacementCounts() {
-  if (!supabase) return {};
+// array of concept ids). Returns:
+//   counts:      { conceptId -> total placement count }   for the modal cross-link
+//   priorityIds: Set<conceptId> placed in the next 14 days from `now`
+// The calendar keys days as `day-YYYY-M-D` where M is 0-indexed.
+export async function loadPlacementData(now = new Date()) {
+  if (!supabase) return { counts: {}, priorityIds: new Set() };
   const { data, error } = await supabase
     .from('calendar_state')
     .select('placements')
     .eq('id', 1)
     .maybeSingle();
-  if (error || !data?.placements) return {};
+  if (error || !data?.placements) return { counts: {}, priorityIds: new Set() };
+
   const counts = {};
   for (const ids of Object.values(data.placements)) {
     if (!Array.isArray(ids)) continue;
     for (const cid of ids) counts[cid] = (counts[cid] || 0) + 1;
   }
+
+  const priorityKeys = new Set();
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(now);
+    d.setDate(d.getDate() + i);
+    priorityKeys.add(`day-${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+  }
+  const priorityIds = new Set();
+  for (const [dayId, ids] of Object.entries(data.placements)) {
+    if (!priorityKeys.has(dayId) || !Array.isArray(ids)) continue;
+    for (const cid of ids) priorityIds.add(cid);
+  }
+  return { counts, priorityIds };
+}
+
+// Backwards-compat shim: old callers that only want counts.
+export async function loadPlacementCounts() {
+  const { counts } = await loadPlacementData();
   return counts;
 }
 
@@ -109,12 +129,17 @@ export function pillarBalance(concepts) {
   });
 }
 
-export function filterAndSearch(concepts, { pillar = 'all', status = 'all', tier = 'all', search = '' } = {}) {
+export function filterAndSearch(concepts, { pillar = [], status = 'all', tier = 'all', search = '', prioritizing = false, priorityIds = null } = {}) {
   const q = search.trim().toLowerCase();
   return concepts.filter(c => {
-    if (!matchesPillarFilter(c.pillar, pillar)) return false;
+    if (!matchesPillarFilters(c.pillar, pillar)) return false;
     if (status !== 'all' && c.status !== status) return false;
     if (tier !== 'all' && c.tier !== tier) return false;
+    if (prioritizing) {
+      const inProduction = c.status === 'production';
+      const placedSoon = priorityIds && priorityIds.has(c.id);
+      if (!inProduction && !placedSoon) return false;
+    }
     if (q) {
       const haystack = [
         c.title || '',
@@ -156,6 +181,78 @@ export async function loadDeployments(conceptId) {
     .order('deployed_at', { ascending: false });
   if (error) throw error;
   return data || [];
+}
+
+export async function loadAllDeployments() {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('concept_deployments')
+    .select('concept_id,deployed_at');
+  if (error) throw error;
+  return data || [];
+}
+
+// Budget summary used by the stats bar:
+//   ytd:                 sum of budget on Published concepts deployed this year
+//                        (each concept counted once)
+//   quarters:            [Q1, Q2, Q3, Q4] sum of budget on concepts deployed in
+//                        that quarter this year (a concept deployed in two
+//                        quarters contributes its budget to both)
+//   currentQuarterIdx:   0..3 index into quarters for the current quarter
+//   currentQuarterSpend: convenience accessor for quarters[currentQuarterIdx]
+//   allocated:           sum of budget on Approved/In-Production concepts
+//                        (not yet "Published") — the upcoming spend
+//   coverage:            { published, budgetedPublished } so we can show
+//                        "x of y published concepts have a budget" if needed
+export function computeBudgetSummary(concepts, deployments, now = new Date()) {
+  const year = now.getFullYear();
+  const currentQuarterIdx = Math.floor(now.getMonth() / 3);
+
+  const budgetById = {};
+  let published = 0;
+  let budgetedPublished = 0;
+  let allocated = 0;
+  for (const c of concepts) {
+    if (c.status === 'deployed') {
+      published++;
+      if (c.budget != null) {
+        budgetedPublished++;
+        budgetById[c.id] = Number(c.budget) || 0;
+      }
+    } else if ((c.status === 'approved' || c.status === 'production') && c.budget != null) {
+      allocated += Number(c.budget) || 0;
+    }
+  }
+
+  // For each concept that has both budget and a Published status, find the
+  // set of quarters (current year) it was deployed in.
+  const conceptQuarters = new Map(); // conceptId -> Set<0..3>
+  for (const d of deployments || []) {
+    if (!d.deployed_at || !(d.concept_id in budgetById)) continue;
+    const dt = new Date(d.deployed_at);
+    if (Number.isNaN(dt.getTime()) || dt.getFullYear() !== year) continue;
+    const q = Math.floor(dt.getMonth() / 3);
+    if (!conceptQuarters.has(d.concept_id)) conceptQuarters.set(d.concept_id, new Set());
+    conceptQuarters.get(d.concept_id).add(q);
+  }
+
+  const quarters = [0, 0, 0, 0];
+  let ytd = 0;
+  for (const [cid, qs] of conceptQuarters) {
+    const b = budgetById[cid];
+    if (!b) continue;
+    if (qs.size > 0) ytd += b;
+    for (const q of qs) quarters[q] += b;
+  }
+
+  return {
+    ytd,
+    quarters,
+    currentQuarterIdx,
+    currentQuarterSpend: quarters[currentQuarterIdx],
+    allocated,
+    coverage: { published, budgetedPublished },
+  };
 }
 
 export async function addDeployment({ conceptId, deployedAt, channel, notes }) {

@@ -8,8 +8,7 @@ import FilterRow from '@/components/FilterRow';
 import ConceptCard from '@/components/ConceptCard';
 import ConceptModal from '@/components/ConceptModal';
 import FooterUtility from '@/components/FooterUtility';
-import { loadConcepts, loadPlacementCounts, filterAndSearch, byNumber, compareForGrid } from '@/lib/concepts';
-import { supabase } from '@/lib/supabase';
+import { loadConcepts, loadPlacementData, loadAllDeployments, filterAndSearch, byNumber, compareForGrid } from '@/lib/concepts';
 
 export default function Page() {
   return (
@@ -26,8 +25,10 @@ function Vault() {
 
   const [concepts, setConcepts] = useState([]);
   const [deployCounts, setDeployCounts] = useState({});
+  const [allDeployments, setAllDeployments] = useState([]);
   const [placementCounts, setPlacementCounts] = useState({});
-  const [filters, setFilters] = useState({ pillar: 'all', status: 'all', tier: 'all' });
+  const [priorityIds, setPriorityIds] = useState(new Set());
+  const [filters, setFilters] = useState({ pillar: [], status: 'all', tier: 'all', prioritizing: false });
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [modalConceptId, setModalConceptId] = useState(null); // null = new concept
@@ -39,10 +40,18 @@ function Vault() {
   async function refresh() {
     setLoading(true);
     try {
-      const [data, places] = await Promise.all([loadConcepts(), loadPlacementCounts()]);
+      const [data, places, deps] = await Promise.all([
+        loadConcepts(),
+        loadPlacementData(),
+        loadAllDeployments(),
+      ]);
       setConcepts(data);
-      setPlacementCounts(places);
-      await refreshDeployCounts();
+      setPlacementCounts(places.counts);
+      setPriorityIds(places.priorityIds);
+      setAllDeployments(deps);
+      const counts = {};
+      for (const row of deps || []) counts[row.concept_id] = (counts[row.concept_id] || 0) + 1;
+      setDeployCounts(counts);
     } catch (e) {
       setError(e.message || String(e));
     } finally {
@@ -51,10 +60,10 @@ function Vault() {
   }
 
   async function refreshDeployCounts() {
-    if (!supabase) { setDeployCounts({}); return; }
-    const { data } = await supabase.from('concept_deployments').select('concept_id');
+    const deps = await loadAllDeployments();
+    setAllDeployments(deps);
     const counts = {};
-    for (const row of data || []) counts[row.concept_id] = (counts[row.concept_id] || 0) + 1;
+    for (const row of deps || []) counts[row.concept_id] = (counts[row.concept_id] || 0) + 1;
     setDeployCounts(counts);
   }
 
@@ -92,8 +101,8 @@ function Vault() {
   }
 
   const filtered = useMemo(
-    () => filterAndSearch(concepts, { ...filters, search }),
-    [concepts, filters, search],
+    () => filterAndSearch(concepts, { ...filters, search, priorityIds }),
+    [concepts, filters, search, priorityIds],
   );
 
   const editingConcept = modalConceptId ? concepts.find(c => c.id === modalConceptId) || null : null;
@@ -101,7 +110,7 @@ function Vault() {
 
   return (
     <>
-      <HeaderSection concepts={concepts} onAddConcept={openNew} />
+      <HeaderSection concepts={concepts} deployments={allDeployments} onAddConcept={openNew} />
 
       <FilterRow
         filters={filters}

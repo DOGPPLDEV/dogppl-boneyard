@@ -1,11 +1,16 @@
 'use client';
 
-import { pillarBalance } from '@/lib/concepts';
+import { pillarBalance, computeBudgetSummary } from '@/lib/concepts';
 import { pillarLabel } from '@/lib/pillars';
 
-export default function HeaderSection({ concepts, onAddConcept }) {
+const QUARTER_LABELS = ['Q1', 'Q2', 'Q3', 'Q4'];
+
+export default function HeaderSection({ concepts, deployments = [], onAddConcept }) {
   const total = concepts.length;
   const bars = pillarBalance(concepts);
+  const budget = computeBudgetSummary(concepts, deployments);
+  const year = new Date().getFullYear();
+  const hasAnyBudgetSignal = budget.ytd > 0 || budget.allocated > 0;
 
   return (
     <header className="px-6 sm:px-12 pt-14 pb-8 border-b border-subtle">
@@ -49,6 +54,51 @@ export default function HeaderSection({ concepts, onAddConcept }) {
           <span className="text-lg leading-none font-normal">+</span> New Concept
         </button>
       </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-[auto_1fr_auto] gap-6 md:gap-12 items-center mt-6 pt-6 border-t border-subtle">
+        <div>
+          <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-bone-dim leading-tight">
+            Year to Date {year}
+          </div>
+          <div className="font-display font-light opsz-144 text-[48px] leading-none mt-1">
+            {formatUSD(budget.ytd)}
+          </div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-mud mt-1.5">
+            {hasAnyBudgetSignal
+              ? `Q${budget.currentQuarterIdx + 1} · ${formatUSD(budget.currentQuarterSpend)}`
+              : 'No published budgets logged yet'}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-bone-dim">
+            Quarterly Breakdown · {year}
+          </div>
+          <div className="grid grid-cols-4 gap-1.5 h-9">
+            {budget.quarters.map((amt, i) => (
+              <QuarterBar
+                key={i}
+                label={QUARTER_LABELS[i]}
+                amount={amt}
+                max={Math.max(...budget.quarters, 1)}
+                isCurrent={i === budget.currentQuarterIdx}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="text-right">
+          <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-bone-dim leading-tight">
+            Allocated · not yet published
+          </div>
+          <div className="font-display font-light text-[28px] leading-none mt-1 text-sand">
+            {formatUSD(budget.allocated)}
+          </div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-mud mt-1.5">
+            Approved + in production
+          </div>
+        </div>
+      </div>
     </header>
   );
 }
@@ -74,4 +124,37 @@ function BalanceBar({ pillar, count, target, state }) {
       </span>
     </div>
   );
+}
+
+function QuarterBar({ label, amount, max, isCurrent }) {
+  const heightPct = max > 0 ? Math.min(100, (amount / max) * 100) : 0;
+  const fillBg = isCurrent ? 'var(--grass-bright)' : 'var(--mud)';
+  return (
+    <div
+      className="relative bg-paw-card border overflow-hidden flex flex-col justify-between px-1.5 py-1"
+      style={{ borderColor: isCurrent ? 'var(--grass-bright)' : 'var(--border-strong)' }}
+    >
+      <div
+        className="absolute inset-x-0 bottom-0 transition-[height] duration-[400ms] ease-out"
+        style={{ height: `${heightPct}%`, background: fillBg, opacity: isCurrent ? 1 : 0.55 }}
+      />
+      <span className="relative z-10 font-mono text-[9px] uppercase tracking-[0.1em] text-bone">
+        {label}
+      </span>
+      <span className="relative z-10 font-display text-[11px] text-bone font-normal whitespace-nowrap">
+        {amount > 0 ? formatShortUSD(amount) : '—'}
+      </span>
+    </div>
+  );
+}
+
+function formatUSD(n) {
+  if (!n) return '$0';
+  return '$' + Number(n).toLocaleString('en-US');
+}
+
+function formatShortUSD(n) {
+  if (!n) return '$0';
+  if (n >= 1000) return '$' + (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k';
+  return '$' + n;
 }
