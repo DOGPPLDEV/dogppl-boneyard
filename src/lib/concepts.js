@@ -10,7 +10,7 @@ export const STATUS_LABELS = {
   sketch:     'Sketch',
   approved:   'Approved',
   production: 'In Production',
-  deployed:   'Deployed',
+  deployed:   'Published',
   buried:     'Buried',
 };
 

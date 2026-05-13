@@ -23,10 +23,17 @@ const EMPTY_DRAFT = {
   preferred_format: 'Campaign',
   status: 'sketch',
   tier: 'T2',
+  budget: '',
   brief: '',
   notes: '',
   asset_links: '',
 };
+
+const TIER_TOOLTIP = [
+  { tier: 'T1 (Heavy lift)', body: 'Anchors the brand. Full production, quarterly cadence. Brand films, anniversary pieces, major partnerships. Typical budget: $25k–100k+.' },
+  { tier: 'T2 (Medium lift)', body: 'Recurring series. 1–2 week lead time. Member episodes, Rufferee tips, themed series. Typical budget: $1k–10k per piece.' },
+  { tier: 'T3 (Low lift)', body: 'Fast-turn, repeatable. 0–3 day lead. Single images, simple Reels, templates. Typical budget: under $500 / mostly internal team time.' },
+];
 
 export default function ConceptModal({ open, concept, byId, placementCount = 0, onClose, onSaved, onDeleted }) {
   const isNew = !concept;
@@ -48,6 +55,7 @@ export default function ConceptModal({ open, concept, byId, placementCount = 0, 
         preferred_format: concept.preferred_format || 'Campaign',
         status: concept.status || 'approved',
         tier: concept.tier || 'T2',
+        budget: concept.budget == null ? '' : String(concept.budget),
         brief: concept.brief || '',
         notes: concept.notes || '',
         asset_links: concept.asset_links || '',
@@ -77,6 +85,9 @@ export default function ConceptModal({ open, concept, byId, placementCount = 0, 
     if (!draft.title.trim()) { setError('A concept needs a name.'); return; }
     setError(null);
     setSaving(true);
+    const budgetApplies = draft.tier === 'T1' || draft.tier === 'T2';
+    const budgetRaw = String(draft.budget || '').replace(/[^\d]/g, '');
+    const budgetVal = budgetApplies && budgetRaw ? parseInt(budgetRaw, 10) : null;
     const payload = {
       id: draft.id,
       title: draft.title.trim(),
@@ -84,6 +95,7 @@ export default function ConceptModal({ open, concept, byId, placementCount = 0, 
       pillar: draft.pillar,
       preferred_format: draft.preferred_format || null,
       tier: draft.tier || null,
+      budget: budgetVal,
       status: draft.status,
       brief: draft.brief.trim() || null,
       notes: draft.notes.trim() || null,
@@ -185,11 +197,22 @@ export default function ConceptModal({ open, concept, byId, placementCount = 0, 
           </Field>
         </div>
 
-        <Field label="Tier">
-          <Select value={draft.tier} onChange={v => set('tier', v)}>
-            {TIERS.map(t => <option key={t} value={t}>{t}</option>)}
-          </Select>
-        </Field>
+        <div className={`grid gap-4 ${(draft.tier === 'T1' || draft.tier === 'T2') ? 'sm:grid-cols-2' : 'sm:grid-cols-1'}`}>
+          <div className="mb-6">
+            <div className="flex items-center gap-1.5 mb-2">
+              <label className="block font-mono text-[10px] uppercase tracking-[0.18em] text-bone-dim">Tier</label>
+              <TierInfo />
+            </div>
+            <Select value={draft.tier} onChange={v => set('tier', v)}>
+              {TIERS.map(t => <option key={t} value={t}>{t}</option>)}
+            </Select>
+          </div>
+          {(draft.tier === 'T1' || draft.tier === 'T2') && (
+            <Field label="Budget (USD)">
+              <CurrencyInput value={draft.budget} onChange={v => set('budget', v)} />
+            </Field>
+          )}
+        </div>
 
         <Field label="Brief — the case for the idea">
           <Textarea value={draft.brief} onChange={v => set('brief', v)} placeholder="What is this? Who is it for? Why does it matter?" rows={4} />
@@ -336,6 +359,64 @@ function Textarea({ value, onChange, placeholder, rows = 4 }) {
       rows={rows}
       className="w-full bg-paw-deep border border-strong text-bone text-sm px-3.5 py-3 outline-none focus:border-bone transition-colors resize-y leading-relaxed"
     />
+  );
+}
+
+function CurrencyInput({ value, onChange }) {
+  // Strip non-digits as the user types so the stored draft is always a
+  // clean whole-dollar string. Empty string = null on save.
+  const handle = e => {
+    const cleaned = e.target.value.replace(/[^\d]/g, '');
+    onChange(cleaned);
+  };
+  const display = value === '' || value == null
+    ? ''
+    : Number(String(value).replace(/[^\d]/g, '')).toLocaleString('en-US');
+  return (
+    <div className="relative">
+      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-bone-dim text-sm pointer-events-none">$</span>
+      <input
+        type="text"
+        inputMode="numeric"
+        value={display}
+        onChange={handle}
+        placeholder="—"
+        className="w-full bg-paw-deep border border-strong text-bone text-sm pl-7 pr-3.5 py-3 outline-none focus:border-bone transition-colors"
+      />
+    </div>
+  );
+}
+
+function TierInfo() {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-block">
+      <button
+        type="button"
+        aria-label="What do the tiers mean?"
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onClick={() => setOpen(o => !o)}
+        className="w-3.5 h-3.5 rounded-full border border-mud text-mud hover:text-bone hover:border-bone text-[9px] leading-none flex items-center justify-center font-mono"
+      >
+        i
+      </button>
+      {open && (
+        <div
+          role="tooltip"
+          onMouseEnter={() => setOpen(true)}
+          onMouseLeave={() => setOpen(false)}
+          className="absolute left-0 top-full mt-2 z-20 w-[320px] bg-paw-deep border border-strong p-4 text-[12px] leading-relaxed text-bone shadow-lg"
+        >
+          {TIER_TOOLTIP.map(t => (
+            <div key={t.tier} className="mb-2.5 last:mb-0">
+              <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-mud mb-0.5">{t.tier}</div>
+              <div className="text-bone-dim">{t.body}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </span>
   );
 }
 
