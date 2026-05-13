@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   STATUSES,
   STATUS_LABELS,
@@ -14,6 +14,15 @@ import {
   genConceptId,
 } from '@/lib/concepts';
 import { CORE_PILLARS, pillarLabel } from '@/lib/pillars';
+import {
+  listConceptMedia,
+  uploadMedia,
+  deleteMedia,
+  signedUrl,
+  validateFile,
+  isImage,
+  isVideo,
+} from '@/lib/media';
 
 const EMPTY_DRAFT = {
   id: '',
@@ -226,6 +235,8 @@ export default function ConceptModal({ open, concept, byId, placementCount = 0, 
           <Textarea value={draft.asset_links} onChange={v => set('asset_links', v)} placeholder="Drive folder, Figma, footage, scripts…" rows={3} />
         </Field>
 
+        {!isNew && <MediaSection conceptId={draft.id} />}
+
         {!isNew && (
           <div className="mt-6 pt-5 border-t border-subtle">
             <h3 className="font-mono text-[10px] uppercase tracking-[0.18em] text-bone-dim mb-3">
@@ -437,4 +448,158 @@ function formatDate(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function MediaSection({ conceptId }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [error, setError] = useState(null);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    listConceptMedia(conceptId)
+      .then(rows => { if (!cancelled) setItems(rows); })
+      .catch(e => { if (!cancelled) setError(e.message || String(e)); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [conceptId]);
+
+  async function handleFiles(fileList) {
+    const files = Array.from(fileList || []);
+    if (files.length === 0) return;
+    setError(null);
+    setBusy(true);
+    const errs = [];
+    const uploaded = [];
+    for (const f of files) {
+      const v = validateFile(f);
+      if (v) { errs.push(v); continue; }
+      try {
+        const row = await uploadMedia(conceptId, f);
+        uploaded.push(row);
+      } catch (e) {
+        errs.push(`"${f.name}" failed: ${e.message || e}`);
+      }
+    }
+    if (uploaded.length) setItems(prev => [...prev, ...uploaded]);
+    if (errs.length) setError(errs.join('  '));
+    setBusy(false);
+  }
+
+  async function handleRemove(row) {
+    if (!confirm('Remove this file? This cannot be undone.')) return;
+    setBusy(true);
+    try {
+      await deleteMedia(row);
+      setItems(prev => prev.filter(r => r.id !== row.id));
+    } catch (e) {
+      setError(e.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function onDrop(e) {
+    e.preventDefault();
+    setDragOver(false);
+    handleFiles(e.dataTransfer.files);
+  }
+
+  return (
+    <div className="mt-6 pt-5 border-t border-subtle">
+      <h3 className="font-mono text-[10px] uppercase tracking-[0.18em] text-bone-dim mb-3">
+        Media
+      </h3>
+
+      <div
+        onClick={() => fileInputRef.current?.click()}
+        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={onDrop}
+        className={`cursor-pointer border border-dashed px-4 py-6 text-center text-sm transition-colors ${
+          dragOver ? 'border-bone text-bone bg-paw-elev' : 'border-strong text-bone-dim hover:border-bone hover:text-bone'
+        }`}
+      >
+        {busy
+          ? 'Uploading…'
+          : 'Drop images or video here, or click to choose. PNG / JPG / WebP / MP4 / MOV. 50 MB max.'}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime"
+          className="hidden"
+          onChange={e => { handleFiles(e.target.files); e.target.value = ''; }}
+        />
+      </div>
+
+      {error && (
+        <div className="mt-2 text-rust text-xs border border-rust/30 px-3 py-2">{error}</div>
+      )}
+
+      {loading ? (
+        <div className="font-display italic text-bone-dim text-[13px] py-3">Loading media…</div>
+      ) : items.length === 0 ? (
+        <div className="font-display italic text-bone-dim text-[13px] py-3">No media yet.</div>
+      ) : (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-2 mt-3">
+          {items.map(row => (
+            <MediaThumb key={row.id} row={row} onRemove={() => handleRemove(row)} disabled={busy} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MediaThumb({ row, onRemove, disabled }) {
+  const [url, setUrl] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    signedUrl(row.file_path).then(u => { if (!cancelled) setUrl(u); });
+    return () => { cancelled = true; };
+  }, [row.file_path]);
+
+  const img = isImage(row.file_type);
+  const vid = isVideo(row.file_type);
+
+  return (
+    <div className="relative group bg-paw-deep border border-subtle aspect-square overflow-hidden">
+      {url && img && (
+        <img src={url} alt={row.alt_text || ''} className="w-full h-full object-cover" />
+      )}
+      {url && vid && (
+        <video src={url} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+      )}
+      {!url && (
+        <div className="absolute inset-0 flex items-center justify-center text-bone-dim text-[10px] font-mono">
+          loading…
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={onRemove}
+        disabled={disabled}
+        aria-label="Remove media"
+        className="absolute top-1 right-1 w-5 h-5 flex items-center justify-center bg-paw/80 text-bone text-base leading-none opacity-0 group-hover:opacity-100 transition-opacity hover:bg-rust"
+      >
+        ×
+      </button>
+      <div className="absolute bottom-0 inset-x-0 bg-paw/80 px-1.5 py-0.5 font-mono text-[9px] text-bone-dim opacity-0 group-hover:opacity-100 transition-opacity">
+        {formatBytes(row.file_size)}
+      </div>
+    </div>
+  );
+}
+
+function formatBytes(n) {
+  if (!n) return '';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
