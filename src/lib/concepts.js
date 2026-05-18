@@ -105,6 +105,45 @@ export function compareForGrid(a, b) {
   return bt - at;
 }
 
+// Sort options surfaced in the FilterRow dropdown. `newest` is the default
+// and orders by creation date so freshly added concepts surface even if
+// they haven't been edited recently. `modified` uses updated_at for the
+// "recently touched" view.
+export const SORT_OPTIONS = [
+  { value: 'newest',   label: 'Newest first' },
+  { value: 'oldest',   label: 'Oldest first' },
+  { value: 'az',       label: 'A to Z' },
+  { value: 'za',       label: 'Z to A' },
+  { value: 'modified', label: 'Recently modified' },
+];
+
+function tsOr(value, fallback = 0) {
+  if (!value) return fallback;
+  const n = Date.parse(value);
+  return Number.isNaN(n) ? fallback : n;
+}
+
+function createdAt(c) {
+  return tsOr(c.created_at, tsOr(c.updated_at));
+}
+
+export function getComparator(sort) {
+  switch (sort) {
+    case 'newest':
+      return (a, b) => createdAt(b) - createdAt(a);
+    case 'oldest':
+      return (a, b) => createdAt(a) - createdAt(b);
+    case 'az':
+      return (a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' });
+    case 'za':
+      return (a, b) => (b.title || '').localeCompare(a.title || '', undefined, { sensitivity: 'base' });
+    case 'modified':
+      return (a, b) => tsOr(b.updated_at) - tsOr(a.updated_at);
+    default:
+      return compareForGrid;
+  }
+}
+
 export function byNumber(concepts, conceptId) {
   const idx = concepts.findIndex(c => c.id === conceptId);
   if (idx < 0) return '';
@@ -165,6 +204,91 @@ export async function saveConcept(detail) {
   if (!supabase) return { error: null };
   const payload = { ...detail, updated_at: new Date().toISOString() };
   return await supabase.from('concept_details').upsert(payload);
+}
+
+// Identity used for any per-concept aggregation that should treat a
+// recurring format as a single entity. "Meet Josie", "Meet Bowie", "Meet
+// Rocco" are each their own concept_details row but share a series
+// ("Meet the Dog"), so audits roll up to the format instead of dispersing
+// across the duplicates.
+export function seriesKey(concept) {
+  return (concept?.series && concept.series.trim()) || concept?.id || '';
+}
+
+// Roll up concepts + deployments by series, falling back to concept_id
+// for unsegmented concepts. Returns a sorted list of groups suitable
+// for "workhorse format" callouts: each entry has the label, member
+// concept ids, and total deployment count across the group. The format
+// mix audit in AUDIT.md should pull from this so duplicated instances
+// of a recurring format aggregate into the parent identity instead of
+// spreading thin across the duplicates.
+export function aggregateBySeries(concepts, deployments) {
+  const groups = new Map();
+  for (const c of concepts || []) {
+    const key = seriesKey(c);
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        label: c.series || c.title || c.id,
+        isSeries: Boolean(c.series),
+        conceptIds: [],
+        deploymentCount: 0,
+      });
+    }
+    groups.get(key).conceptIds.push(c.id);
+  }
+  const idToKey = new Map();
+  for (const g of groups.values()) {
+    for (const id of g.conceptIds) idToKey.set(id, g.key);
+  }
+  for (const d of deployments || []) {
+    const k = idToKey.get(d.concept_id);
+    if (!k) continue;
+    groups.get(k).deploymentCount += 1;
+  }
+  return [...groups.values()].sort((a, b) => b.deploymentCount - a.deploymentCount);
+}
+
+// Pick the next title when duplicating. Strips a trailing integer if
+// present and increments; otherwise appends " 2". Then bumps past any
+// titles that already exist (case-insensitive) so we never silently
+// collide.
+export function nextDuplicateTitle(sourceTitle, existingTitles) {
+  const src = (sourceTitle || '').trim();
+  const m = /^(.*?)\s+(\d+)\s*$/.exec(src);
+  const base = m ? m[1].trim() : src;
+  let n = m ? parseInt(m[2], 10) + 1 : 2;
+  const norm = s => s.toLowerCase().replace(/\s+/g, ' ').trim();
+  const taken = new Set((existingTitles || []).map(norm));
+  while (taken.has(norm(`${base} ${n}`))) n++;
+  return `${base} ${n}`;
+}
+
+// Create a new concept by copying a source. Inherits the series tag so
+// the duplicate aggregates with its parent in audits. Resets status to
+// sketch and clears is_scheduled — placements and media are intentionally
+// not carried over.
+export async function duplicateConcept(source, allConcepts) {
+  const newId = genConceptId();
+  const title = nextDuplicateTitle(source.title || '', allConcepts.map(c => c.title || ''));
+  const payload = {
+    id: newId,
+    title,
+    description: source.description ?? null,
+    pillar: source.pillar ?? 'DOG',
+    preferred_format: source.preferred_format ?? null,
+    tier: source.tier ?? 'T2',
+    budget: source.budget ?? null,
+    brief: source.brief ?? null,
+    notes: source.notes ?? null,
+    asset_links: source.asset_links ?? null,
+    series: source.series ?? null,
+    status: 'sketch',
+    is_scheduled: false,
+  };
+  const { error } = await saveConcept(payload);
+  if (error) return { error };
+  return { concept: { ...payload, updated_at: new Date().toISOString() } };
 }
 
 export async function deleteConcept(id) {

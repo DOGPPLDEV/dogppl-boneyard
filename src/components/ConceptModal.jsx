@@ -8,6 +8,7 @@ import {
   FORMAT_OPTIONS,
   saveConcept,
   deleteConcept,
+  duplicateConcept,
   loadDeployments,
   addDeployment,
   removeDeployment,
@@ -36,7 +37,31 @@ const EMPTY_DRAFT = {
   brief: '',
   notes: '',
   asset_links: '',
+  series: '',
 };
+
+// Pointing the cross-app links at the calendar. In production both apps
+// live at their dogppl.co subdomains; in local development the boneyard
+// runs on next dev and the calendar on Vite (5173 by default), so we
+// resolve to whichever target is reachable. NEXT_PUBLIC_CALENDAR_ORIGIN
+// (if set) wins, then localhost defaults to the Vite port, otherwise we
+// fall back to the production hostname.
+function calendarOrigin() {
+  if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_CALENDAR_ORIGIN) {
+    return process.env.NEXT_PUBLIC_CALENDAR_ORIGIN;
+  }
+  if (typeof window !== 'undefined' && /^localhost$|^127\.0\.0\.1$/.test(window.location.hostname)) {
+    return 'http://localhost:5173';
+  }
+  return 'https://calendar.dogppl.co';
+}
+
+function buildCalendarUrl(conceptId, { place = false } = {}) {
+  const params = new URLSearchParams();
+  params.set('concept', conceptId);
+  if (place) params.set('place', '1');
+  return `${calendarOrigin()}/?${params.toString()}`;
+}
 
 const TIER_TOOLTIP = [
   { tier: 'T1 (Heavy lift)', body: 'Anchors the brand. Full production, quarterly cadence. Brand films, anniversary pieces, major partnerships. Typical budget: $25k–100k+.' },
@@ -44,7 +69,7 @@ const TIER_TOOLTIP = [
   { tier: 'T3 (Low lift)', body: 'Fast-turn, repeatable. 0–3 day lead. Single images, simple Reels, templates. Typical budget: under $500 / mostly internal team time.' },
 ];
 
-export default function ConceptModal({ open, concept, byId, placementCount = 0, onClose, onSaved, onDeleted }) {
+export default function ConceptModal({ open, concept, byId, allConcepts = [], placementCount = 0, onClose, onSaved, onDeleted, onDuplicated }) {
   const isNew = !concept;
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [deployments, setDeployments] = useState([]);
@@ -68,6 +93,7 @@ export default function ConceptModal({ open, concept, byId, placementCount = 0, 
         brief: concept.brief || '',
         notes: concept.notes || '',
         asset_links: concept.asset_links || '',
+        series: concept.series || '',
       });
       loadDeployments(concept.id).then(setDeployments).catch(() => setDeployments([]));
     } else {
@@ -109,11 +135,26 @@ export default function ConceptModal({ open, concept, byId, placementCount = 0, 
       brief: draft.brief.trim() || null,
       notes: draft.notes.trim() || null,
       asset_links: draft.asset_links.trim() || null,
+      series: draft.series.trim() || null,
     };
     const { error } = await saveConcept(payload);
     setSaving(false);
     if (error) { setError(error.message); return; }
-    onSaved(payload);
+    // For a freshly created concept, hand the parent a flag so it can
+    // keep the modal open and transition into edit state in place
+    // (exposing the media section, deployment log, etc.) instead of
+    // closing the modal. Existing concepts close as before.
+    onSaved(payload, { wasNew: isNew });
+  }
+
+  async function onDuplicate() {
+    if (!concept) return;
+    setError(null);
+    setSaving(true);
+    const { error, concept: dup } = await duplicateConcept(concept, allConcepts);
+    setSaving(false);
+    if (error) { setError(error.message); return; }
+    onDuplicated?.(dup);
   }
 
   async function onDelete() {
@@ -173,8 +214,28 @@ export default function ConceptModal({ open, concept, byId, placementCount = 0, 
           ×
         </button>
 
-        <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-mud mb-1">
-          {isNew ? 'New Concept' : `${byId || draft.id} · ${STATUS_LABELS[draft.status] || draft.status}`}
+        <div className="flex items-start justify-between gap-4 mb-1 pr-8">
+          <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-mud flex items-center gap-2 flex-wrap">
+            <span>{isNew ? 'New Concept' : `${byId || draft.id} · ${STATUS_LABELS[draft.status] || draft.status}`}</span>
+            {!isNew && concept?.is_scheduled && draft.status !== 'deployed' && draft.status !== 'buried' && (
+              <span
+                className="font-mono text-[10px] uppercase tracking-[0.18em] px-1.5 py-0.5"
+                style={{ background: 'rgba(229,188,42,0.14)', color: '#E5BC2A' }}
+              >
+                Scheduled
+              </span>
+            )}
+          </div>
+          {!isNew && (
+            <button
+              onClick={onDuplicate}
+              disabled={saving}
+              title="Create a copy of this concept as a new Sketch"
+              className="font-mono text-[10px] uppercase tracking-[0.18em] text-mud border border-mud px-3 py-1.5 hover:text-bone hover:border-bone transition-colors disabled:opacity-60 whitespace-nowrap"
+            >
+              + Duplicate
+            </button>
+          )}
         </div>
         <h2 className="font-display text-4xl font-light tracking-[-0.02em] opsz-72 mb-8">
           {isNew ? 'Add to the Boneyard' : (concept.title || '(untitled)')}
@@ -233,6 +294,10 @@ export default function ConceptModal({ open, concept, byId, placementCount = 0, 
 
         <Field label="Asset Links — one per line">
           <Textarea value={draft.asset_links} onChange={v => set('asset_links', v)} placeholder="Drive folder, Figma, footage, scripts…" rows={3} />
+        </Field>
+
+        <Field label='Series — optional grouping ("Meet the Dog", "Rufferee Canine Edu"…)'>
+          <Input value={draft.series} onChange={v => set('series', v)} placeholder="Leave blank for one-off concepts." />
         </Field>
 
         {!isNew && <MediaSection conceptId={draft.id} />}
@@ -299,16 +364,37 @@ export default function ConceptModal({ open, concept, byId, placementCount = 0, 
           <div className="mt-6 text-rust text-sm border border-rust/30 px-3 py-2">{error}</div>
         )}
 
-        {!isNew && placementCount > 0 && (
+        {!isNew && concept?.id && placementCount > 0 && (
           <div className="mt-6 pt-5 border-t border-subtle">
             <a
-              href={`https://calendar.dogppl.co/?concept=${encodeURIComponent(concept.id)}`}
+              href={buildCalendarUrl(concept.id)}
               target="_blank"
               rel="noopener"
               className="font-mono text-[11px] uppercase tracking-[0.18em] text-mud hover:text-bone transition-colors"
             >
               Open in Calendar → {placementCount} placement{placementCount === 1 ? '' : 's'}
             </a>
+          </div>
+        )}
+
+        {!isNew
+          && concept?.id
+          && draft.status === 'approved'
+          && !concept.is_scheduled
+          && concept.status !== 'deployed'
+          && (
+          <div className="mt-6 pt-5 border-t border-subtle">
+            <a
+              href={buildCalendarUrl(concept.id, { place: true })}
+              target="_blank"
+              rel="noopener"
+              className="inline-flex items-center gap-2 bg-grass hover:bg-grass-bright text-bone font-mono text-[11px] uppercase tracking-[0.12em] px-4 py-3 transition-colors"
+            >
+              Send to Calendar →
+            </a>
+            <div className="font-mono text-[10px] text-bone-dim mt-2 tracking-[0.08em]">
+              Opens the calendar with this concept ready to drop on a day.
+            </div>
           </div>
         )}
 

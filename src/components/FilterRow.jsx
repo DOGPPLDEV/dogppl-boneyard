@@ -1,6 +1,6 @@
 'use client';
 
-import { STATUSES, STATUS_LABELS, TIERS } from '@/lib/concepts';
+import { STATUSES, STATUS_LABELS, TIERS, SORT_OPTIONS } from '@/lib/concepts';
 import { PILLAR_CHIPS } from '@/lib/pillars';
 
 export default function FilterRow({ filters, setFilters, search, setSearch }) {
@@ -19,6 +19,7 @@ export default function FilterRow({ filters, setFilters, search, setSearch }) {
   }
 
   const prioritizing = !!filters.prioritizing;
+  const sortValue = filters.sort || 'newest';
 
   return (
     <div
@@ -68,7 +69,7 @@ export default function FilterRow({ filters, setFilters, search, setSearch }) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <button
           onClick={() => setFilters(f => ({ ...f, prioritizing: !f.prioritizing }))}
           aria-pressed={prioritizing}
@@ -84,6 +85,22 @@ export default function FilterRow({ filters, setFilters, search, setSearch }) {
         <span className="font-display italic text-[12px] text-bone-dim">
           In production or placed in the next 14 days.
         </span>
+
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-bone-dim ml-4">Sort</span>
+        <div className="relative">
+          <select
+            value={sortValue}
+            onChange={e => setFilters(f => ({ ...f, sort: e.target.value }))}
+            className="appearance-none bg-transparent text-bone-dim text-xs tracking-[0.02em] border border-strong px-3 py-1.5 pr-7 hover:border-bone hover:text-bone focus:border-bone focus:text-bone outline-none transition-colors cursor-pointer"
+          >
+            {SORT_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value} className="bg-paw text-bone">
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <span aria-hidden className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-bone-dim">▾</span>
+        </div>
       </div>
     </div>
   );

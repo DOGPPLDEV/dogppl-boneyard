@@ -44,6 +44,14 @@ export default function ConceptCard({ concept, byId, deploymentCount = 0, onOpen
         <Tag style={pillarTagStyle(concept.pillar)}>{pillarLabel(concept.pillar)}</Tag>
         {concept.preferred_format && <Tag>{concept.preferred_format}</Tag>}
         {concept.tier && <Tag>{concept.tier}</Tag>}
+        {concept.series && (
+          <Tag style={{ background: 'rgba(164,126,92,0.18)', color: 'var(--mud)' }}>
+            {concept.series}
+          </Tag>
+        )}
+        {concept.is_scheduled && status !== 'deployed' && status !== 'buried' && (
+          <Tag style={{ background: 'rgba(229,188,42,0.14)', color: '#E5BC2A' }}>Scheduled</Tag>
+        )}
         {deploymentCount > 0 && (
           <Tag>{deploymentCount} deploy{deploymentCount > 1 ? 's' : ''}</Tag>
         )}

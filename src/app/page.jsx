@@ -8,7 +8,7 @@ import FilterRow from '@/components/FilterRow';
 import ConceptCard from '@/components/ConceptCard';
 import ConceptModal from '@/components/ConceptModal';
 import FooterUtility from '@/components/FooterUtility';
-import { loadConcepts, loadPlacementData, loadAllDeployments, filterAndSearch, byNumber, compareForGrid } from '@/lib/concepts';
+import { loadConcepts, loadPlacementData, loadAllDeployments, filterAndSearch, byNumber, compareForGrid, getComparator } from '@/lib/concepts';
 
 export default function Page() {
   return (
@@ -28,7 +28,7 @@ function Vault() {
   const [allDeployments, setAllDeployments] = useState([]);
   const [placementCounts, setPlacementCounts] = useState({});
   const [priorityIds, setPriorityIds] = useState(new Set());
-  const [filters, setFilters] = useState({ pillar: [], status: 'all', tier: 'all', prioritizing: false });
+  const [filters, setFilters] = useState({ pillar: [], status: 'all', tier: 'all', prioritizing: false, sort: 'newest' });
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [modalConceptId, setModalConceptId] = useState(null); // null = new concept
@@ -82,7 +82,7 @@ function Vault() {
     if (wantedConceptId) router.replace('/', { scroll: false });
   }
 
-  function onSaved(saved) {
+  function onSaved(saved, { wasNew = false } = {}) {
     setConcepts(prev => {
       const idx = prev.findIndex(c => c.id === saved.id);
       const merged = idx >= 0
@@ -91,7 +91,18 @@ function Vault() {
       return merged.sort(compareForGrid);
     });
     refreshDeployCounts();
-    closeModal();
+    if (wasNew) {
+      // Keep modal open, transition to edit state so the Media section
+      // (gated to saved concepts) becomes usable without a close/reopen.
+      setModalConceptId(saved.id);
+    } else {
+      closeModal();
+    }
+  }
+
+  function onDuplicated(dup) {
+    setConcepts(prev => [{ ...dup }, ...prev].sort(compareForGrid));
+    setModalConceptId(dup.id);
   }
 
   function onDeleted(id) {
@@ -100,10 +111,10 @@ function Vault() {
     closeModal();
   }
 
-  const filtered = useMemo(
-    () => filterAndSearch(concepts, { ...filters, search, priorityIds }),
-    [concepts, filters, search, priorityIds],
-  );
+  const filtered = useMemo(() => {
+    const list = filterAndSearch(concepts, { ...filters, search, priorityIds });
+    return [...list].sort(getComparator(filters.sort));
+  }, [concepts, filters, search, priorityIds]);
 
   const editingConcept = modalConceptId ? concepts.find(c => c.id === modalConceptId) || null : null;
   const editingByNumber = editingConcept ? byNumber(concepts, editingConcept.id) : '';
@@ -157,9 +168,11 @@ function Vault() {
         open={modalOpen}
         concept={editingConcept}
         byId={editingByNumber}
+        allConcepts={concepts}
         placementCount={editingConcept ? (placementCounts[editingConcept.id] || 0) : 0}
         onClose={closeModal}
         onSaved={onSaved}
+        onDuplicated={onDuplicated}
         onDeleted={onDeleted}
       />
     </>
