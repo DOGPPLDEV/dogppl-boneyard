@@ -47,12 +47,22 @@ export default function HeaderSection({ concepts, deployments = [], onAddConcept
           </div>
         </div>
 
-        <button
-          onClick={onAddConcept}
-          className="bg-bone text-paw font-semibold uppercase tracking-[0.08em] text-[13px] px-7 py-[18px] flex items-center gap-2.5 hover:bg-mud hover:text-bone hover:-translate-y-px transition-all"
-        >
-          <span className="text-lg leading-none font-normal">+</span> New Concept
-        </button>
+        <div className="flex items-center gap-3 justify-end">
+          <button
+            type="button"
+            onClick={() => { throw new Error('Sentry test error — Boneyard header'); }}
+            className="font-mono text-[10px] uppercase tracking-[0.12em] text-rust border border-rust px-3 py-2 hover:bg-rust hover:text-bone transition-colors"
+            data-testid="sentry-test-error"
+          >
+            Throw test error
+          </button>
+          <button
+            onClick={onAddConcept}
+            className="bg-bone text-paw font-semibold uppercase tracking-[0.08em] text-[13px] px-7 py-[18px] flex items-center gap-2.5 hover:bg-mud hover:text-bone hover:-translate-y-px transition-all"
+          >
+            <span className="text-lg leading-none font-normal">+</span> New Concept
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-[auto_1fr_auto] gap-6 md:gap-12 items-center mt-6 pt-6 border-t border-subtle">
