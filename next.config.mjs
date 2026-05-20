@@ -9,5 +9,12 @@ export default withSentryConfig(nextConfig, {
   org: "dog-ppl",
   project: "dogppl-boneyard",
   silent: !process.env.CI,
-  disableLogger: true,
+  sourcemaps: {
+    disable: true,
+  },
+  webpack: {
+    treeshake: {
+      removeDebugLogging: true,
+    },
+  },
 });
