@@ -28,7 +28,7 @@ function Vault() {
   const [allDeployments, setAllDeployments] = useState([]);
   const [placementCounts, setPlacementCounts] = useState({});
   const [priorityIds, setPriorityIds] = useState(new Set());
-  const [filters, setFilters] = useState({ pillar: [], status: 'all', tier: 'all', prioritizing: false, sort: 'newest' });
+  const [filters, setFilters] = useState({ pillar: [], status: 'all', tier: 'all', scheduled: 'all', prioritizing: false, sort: 'newest' });
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [modalConceptId, setModalConceptId] = useState(null); // null = new concept

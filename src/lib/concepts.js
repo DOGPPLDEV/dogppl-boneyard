@@ -168,12 +168,18 @@ export function pillarBalance(concepts) {
   });
 }
 
-export function filterAndSearch(concepts, { pillar = [], status = 'all', tier = 'all', search = '', prioritizing = false, priorityIds = null } = {}) {
+export function filterAndSearch(concepts, { pillar = [], status = 'all', tier = 'all', scheduled = 'all', search = '', prioritizing = false, priorityIds = null } = {}) {
   const q = search.trim().toLowerCase();
   return concepts.filter(c => {
     if (!matchesPillarFilters(c.pillar, pillar)) return false;
     if (status !== 'all' && c.status !== status) return false;
     if (tier !== 'all' && c.tier !== tier) return false;
+    if (scheduled === 'scheduled') {
+      if (!c.is_scheduled) return false;
+    } else if (scheduled === 'unscheduled') {
+      if (c.is_scheduled) return false;
+      if (c.status === 'published' || c.status === 'deployed') return false;
+    }
     if (prioritizing) {
       const inProduction = c.status === 'production';
       const placedSoon = priorityIds && priorityIds.has(c.id);

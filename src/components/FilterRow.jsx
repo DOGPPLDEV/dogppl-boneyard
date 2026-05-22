@@ -56,6 +56,16 @@ export default function FilterRow({ filters, setFilters, search, setSearch }) {
           onChange={v => setFilters(f => ({ ...f, tier: v }))}
           options={[{ value: 'all', label: 'All' }, ...TIERS.map(t => ({ value: t, label: t }))]}
         />
+        <FilterGroup
+          label="Scheduled"
+          value={filters.scheduled || 'all'}
+          onChange={v => setFilters(f => ({ ...f, scheduled: v }))}
+          options={[
+            { value: 'all', label: 'All' },
+            { value: 'scheduled', label: 'Scheduled' },
+            { value: 'unscheduled', label: 'Not yet scheduled' },
+          ]}
+        />
 
         <div className="relative ml-auto">
           <span className="absolute left-0 top-1/2 -translate-y-1/2 text-base text-bone-dim">⌕</span>
