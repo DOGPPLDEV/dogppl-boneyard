@@ -27,26 +27,31 @@ export const ACTIVE_STATUSES = new Set(['approved', 'production', 'deployed']);
 export const TIERS = ['T1', 'T2', 'T3'];
 
 // Editorial format options shown in the modal dropdown. Existing
-// preferred_format values from the calendar (Reel, Carousel, ...) are
-// preserved when loaded and still selectable, but new concepts created
-// in the Boneyard reach for the broader editorial vocabulary.
+// preferred_format values that fall outside this list are preserved
+// in-place when loading a concept (see ConceptModal) so legacy data
+// is not silently lost.
 export const FORMAT_OPTIONS = [
-  'Campaign',
-  'Brand Film',
+  'IG Single Image',
+  'IG Single Epigram',
+  'IG Double Epigram',
+  'IG Carousel',
   'IG Reel',
-  'IG Post',
   'IG Story',
-  'Member Email',
-  'Retail / Physical',
-  'Event',
-  'Editorial',
-  'Series',
-  'Reel',
-  'Carousel',
-  'Single image',
-  'Video',
-  'Story',
-  'Other',
+  'Tik Tok Story',
+  'YouTube Video',
+  'YouTube Short',
+];
+
+// Formats that require an additional Epigram type selection. Mirrors
+// the conditional surfaced in the Calendar app so both editors stay in
+// sync on the shared concept_details.epigram_type column.
+export const EPIGRAM_FORMATS = new Set(['IG Single Epigram', 'IG Double Epigram']);
+
+export const EPIGRAM_TYPES = [
+  'FIELD NOTES (Edu.)',
+  'QUOTES (Culture)',
+  'NEWS (Edu & Culture)',
+  'MAXIMS (Brand)',
 ];
 
 export async function loadConcepts() {
@@ -191,6 +196,9 @@ export function filterAndSearch(concepts, { pillar = [], status = 'all', tier = 
         c.description || '',
         c.brief || '',
         c.notes || '',
+        c.caption || '',
+        c.mentions || '',
+        c.source || '',
         c.preferred_format || '',
       ].join('  ').toLowerCase();
       if (!haystack.includes(q)) return false;
@@ -283,10 +291,14 @@ export async function duplicateConcept(source, allConcepts) {
     description: source.description ?? null,
     pillar: source.pillar ?? 'DOG',
     preferred_format: source.preferred_format ?? null,
+    epigram_type: source.epigram_type ?? null,
     tier: source.tier ?? 'T2',
     budget: source.budget ?? null,
     brief: source.brief ?? null,
     notes: source.notes ?? null,
+    caption: source.caption ?? null,
+    mentions: source.mentions ?? null,
+    source: source.source ?? null,
     asset_links: source.asset_links ?? null,
     series: source.series ?? null,
     status: 'sketch',

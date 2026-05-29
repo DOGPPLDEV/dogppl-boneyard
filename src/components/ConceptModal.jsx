@@ -6,6 +6,8 @@ import {
   STATUS_LABELS,
   TIERS,
   FORMAT_OPTIONS,
+  EPIGRAM_FORMATS,
+  EPIGRAM_TYPES,
   saveConcept,
   deleteConcept,
   duplicateConcept,
@@ -30,12 +32,16 @@ const EMPTY_DRAFT = {
   title: '',
   description: '',
   pillar: 'DOG',
-  preferred_format: 'Campaign',
+  preferred_format: 'IG Single Image',
+  epigram_type: '',
   status: 'sketch',
   tier: 'T2',
   budget: '',
   brief: '',
   notes: '',
+  caption: '',
+  mentions: '',
+  source: '',
   asset_links: '',
   series: '',
 };
@@ -86,12 +92,16 @@ export default function ConceptModal({ open, concept, byId, allConcepts = [], pl
         title: concept.title || '',
         description: concept.description || '',
         pillar: concept.pillar || 'DOG',
-        preferred_format: concept.preferred_format || 'Campaign',
+        preferred_format: concept.preferred_format || 'IG Single Image',
+        epigram_type: concept.epigram_type || '',
         status: concept.status || 'approved',
         tier: concept.tier || 'T2',
         budget: concept.budget == null ? '' : String(concept.budget),
         brief: concept.brief || '',
         notes: concept.notes || '',
+        caption: concept.caption || '',
+        mentions: concept.mentions || '',
+        source: concept.source || '',
         asset_links: concept.asset_links || '',
         series: concept.series || '',
       });
@@ -123,17 +133,22 @@ export default function ConceptModal({ open, concept, byId, allConcepts = [], pl
     const budgetApplies = draft.tier === 'T1' || draft.tier === 'T2';
     const budgetRaw = String(draft.budget || '').replace(/[^\d]/g, '');
     const budgetVal = budgetApplies && budgetRaw ? parseInt(budgetRaw, 10) : null;
+    const epigramApplies = EPIGRAM_FORMATS.has(draft.preferred_format);
     const payload = {
       id: draft.id,
       title: draft.title.trim(),
       description: draft.description.trim() || null,
       pillar: draft.pillar,
       preferred_format: draft.preferred_format || null,
+      epigram_type: epigramApplies ? (draft.epigram_type || null) : null,
       tier: draft.tier || null,
       budget: budgetVal,
       status: draft.status,
       brief: draft.brief.trim() || null,
       notes: draft.notes.trim() || null,
+      caption: draft.caption.trim() || null,
+      mentions: draft.mentions.trim() || null,
+      source: draft.source.trim() || null,
       asset_links: draft.asset_links.trim() || null,
       series: draft.series.trim() || null,
     };
@@ -267,6 +282,18 @@ export default function ConceptModal({ open, concept, byId, allConcepts = [], pl
           </Field>
         </div>
 
+        {EPIGRAM_FORMATS.has(draft.preferred_format) && (
+          <Field label="Epigram type">
+            <Select value={draft.epigram_type} onChange={v => set('epigram_type', v)}>
+              <option value="">— pick one —</option>
+              {(EPIGRAM_TYPES.includes(draft.epigram_type) || !draft.epigram_type
+                ? EPIGRAM_TYPES
+                : [draft.epigram_type, ...EPIGRAM_TYPES]
+              ).map(t => <option key={t} value={t}>{t}</option>)}
+            </Select>
+          </Field>
+        )}
+
         <div className={`grid gap-4 ${(draft.tier === 'T1' || draft.tier === 'T2') ? 'sm:grid-cols-2' : 'sm:grid-cols-1'}`}>
           <div className="mb-6">
             <div className="flex items-center gap-1.5 mb-2">
@@ -288,9 +315,18 @@ export default function ConceptModal({ open, concept, byId, allConcepts = [], pl
           <Textarea value={draft.brief} onChange={v => set('brief', v)} placeholder="What is this? Who is it for? Why does it matter?" rows={4} />
         </Field>
 
-        <Field label="Notes — open thinking, references, riffs">
-          <Textarea value={draft.notes} onChange={v => set('notes', v)} placeholder="Anything else worth keeping." rows={3} />
+        <Field label="Caption">
+          <Textarea value={draft.caption} onChange={v => set('caption', v)} placeholder="The post copy as it will read on the feed." rows={3} />
         </Field>
+
+        <div className="grid sm:grid-cols-2 gap-4">
+          <Field label="Mentions">
+            <Input value={draft.mentions} onChange={v => set('mentions', v)} placeholder="@dogppl, @collaborator…" />
+          </Field>
+          <Field label="Source">
+            <Input value={draft.source} onChange={v => set('source', v)} placeholder="Who or where this came from." />
+          </Field>
+        </div>
 
         <Field label="Asset Links — one per line">
           <Textarea value={draft.asset_links} onChange={v => set('asset_links', v)} placeholder="Drive folder, Figma, footage, scripts…" rows={3} />
